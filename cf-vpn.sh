@@ -205,7 +205,7 @@ EOF
 
 write_xray() {
   jq -n --arg path "$XPATH" --argjson port "$XRAY_PORT" '{
-    log: {loglevel: "warning"},
+    log: {loglevel: "error", access: "none"},
     inbounds: [{
       tag: "cf-xhttp", listen: "127.0.0.1", port: $port, protocol: "vless",
       settings: {clients: [], decryption: "none"},
@@ -213,7 +213,12 @@ write_xray() {
       sniffing: {enabled: true, destOverride: ["http", "tls", "quic"]}
     }],
     outbounds: [{protocol: "freedom", tag: "direct"}, {protocol: "blackhole", tag: "block"}],
-    routing: {rules: [{type: "field", protocol: ["bittorrent"], outboundTag: "block"}]}
+    routing: {rules: [
+      # QUIC (UDP 443) через CDN работает плохо: Instagram/YouTube подвисают,
+      # не переключаясь на TCP. Блокируем — приложения сразу уходят на TCP.
+      {type: "field", network: "udp", port: "443", outboundTag: "block"},
+      {type: "field", protocol: ["bittorrent"], outboundTag: "block"}
+    ]}
   }' >"$XRAY_CONF"
 }
 
