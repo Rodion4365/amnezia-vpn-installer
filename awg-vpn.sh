@@ -9,6 +9,7 @@
 # `curl | bash` скрипт был прочитан целиком до начала выполнения.
 
 set -Eeuo pipefail
+export LC_ALL=C.UTF-8
 
 REPO_RAW="https://raw.githubusercontent.com/Rodion4365/amnezia-vpn-installer/main/awg-vpn.sh"
 IFACE="${AWG_IFACE:-awg0}"
@@ -376,6 +377,9 @@ cmd_remove() {
   reload; make_zip
 }
 
+# Выравнивание по символам, а не байтам (printf считает байты, кириллица съезжает).
+pad() { local s=$1; printf '%s%*s' "$s" $(( $2 > ${#s} ? $2 - ${#s} : 1 )) ''; }
+
 ago() {
   local s=$(( $(date +%s) - $1 ))
   if   (( $1 == 0 ));   then echo "никогда"
@@ -391,14 +395,13 @@ cmd_list() {
   local hs tr
   hs=$(awg show "$IFACE" latest-handshakes 2>/dev/null || true)
   tr=$(awg show "$IFACE" transfer 2>/dev/null || true)
-  printf "${B}%-18s %-14s %-16s %s${N}\n" "КЛИЕНТ" "IP" "ПОДКЛЮЧЕНИЕ" "ПОЛУЧЕНО / ОТДАНО"
+  echo "${B}$(pad КЛИЕНТ 18)$(pad IP 15)$(pad ПОДКЛЮЧЕНИЕ 17)ПОЛУЧЕНО / ОТДАНО${N}"
   awk '/^### client /{name=$3} /^PublicKey = /{pub=$3} /^AllowedIPs = /{print name, pub, $3}' "$CONF" |
   while read -r name pub ip; do
     local t rx tx
     t=$(awk -v k="$pub" '$1 == k {print $2}' <<<"$hs"); t=${t:-0}
     read -r rx tx < <(awk -v k="$pub" '$1 == k {print $2, $3}' <<<"$tr"; echo "0 0")
-    printf "%-18s %-14s %-16s %s / %s\n" "$name" "${ip%/32}" "$(ago "$t")" \
-      "$(numfmt --to=iec --suffix=B "${rx:-0}")" "$(numfmt --to=iec --suffix=B "${tx:-0}")"
+    echo "$(pad "$name" 18)$(pad "${ip%/32}" 15)$(pad "$(ago "$t")" 17)$(numfmt --to=iec --suffix=B "${rx:-0}") / $(numfmt --to=iec --suffix=B "${tx:-0}")"
   done
 }
 
