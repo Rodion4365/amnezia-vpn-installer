@@ -101,6 +101,33 @@ awg-vpn share
 - NAT, проброс трафика, ограничение MSS, BBR. Если включён `ufw`, порт открывается и в нём.
 - Клиентам весь трафик (`0.0.0.0/0, ::/0`) идёт через туннель — IPv6 не утекает мимо VPN. MTU 1280.
 
+## Запасной вариант через Cloudflare (на случай бана IP)
+
+Если провайдер блокирует IP сервера целиком, AmneziaWG перестаёт работать. Скрипт `cf-vpn.sh` ставит **VLESS + XHTTP через Cloudflare CDN**: клиент подключается к адресам Cloudflare по вашему домену, а не к IP сервера, поэтому бан IP подключение не ломает. Скорость ниже, чем у AmneziaWG, но это хороший запасной канал.
+
+Можно ставить на тот же сервер, что и AmneziaWG, — они не мешают друг другу (AmneziaWG — UDP, Cloudflare — TCP 80/443).
+
+**Что нужно заранее:**
+
+1. **Домен.** Любой дешёвый, без слов vpn/proxy в названии, не .ru/.рф. Например, на Namecheap; при покупке PremiumDNS не нужен, Domain Privacy оставьте.
+2. **Аккаунт Cloudflare** (бесплатный): dash.cloudflare.com → *Add a domain* → ваш домен → план **Free**. Cloudflare покажет два NS-сервера — впишите их у регистратора (Namecheap: Domain List → Manage → Nameservers → **Custom DNS**).
+3. В Cloudflare → **DNS → Records → Add record**: тип `A`, имя `@`, IPv4 — IP сервера, **Proxy status: Proxied** (оранжевое облако).
+4. Подождите, пока домен станет *Active* (от 5 минут до пары часов).
+
+**Установка** (на сервере, от root):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rodion4365/amnezia-vpn-installer/main/cf-vpn.sh | bash -s -- install --domain ваш-домен.com
+```
+
+Скрипт поставит Xray и nginx, выпустит сертификат Let's Encrypt, сделает «сайт-прикрытие» (если открыть домен в браузере, будет обычная страница входа) и закроет порты 80/443 для всех, кроме Cloudflare. В конце покажет QR-коды и ссылки `vless://…` для трёх клиентов.
+
+**Приложения:** Happ, Hiddify, v2RayTun (iOS/Android), Hiddify или v2rayN (Windows/macOS) → «+» → сканировать QR или вставить ссылку из буфера.
+
+Скачать ссылки и QR на ПК: `scp -r root@IP:/root/cf-clients .`
+
+**Управление:** `cf-vpn list | add <имя> | remove <имя> | qr [имя] | status | cert | uninstall`
+
 ## Если что-то пошло не так
 
 - **«Модуль ядра amneziawg не загрузился»** — выполните `apt install -y linux-generic && reboot`, после перезагрузки запустите установку снова.
