@@ -34,6 +34,18 @@ installed() { [[ -f $CONF && -f $PARAMS ]]; }
 # shellcheck disable=SC1090
 load()      { installed || die "VPN ещё не установлен. Установка: awg-vpn install"; source "$PARAMS"; }
 rand()      { shuf -i "$1-$2" -n 1; }
+
+# apt с повторами: репозитории (особенно Launchpad) иногда отвечают 503.
+apt_retry() {
+  local i
+  for i in 1 2 3 4 5; do
+    "${APT[@]}" "$@" </dev/null >/dev/null && return 0
+    warn "apt-get $1: попытка $i не удалась, повтор через $(( i * 10 )) с…"
+    sleep $(( i * 10 ))
+    "${APT[@]}" update </dev/null >/dev/null 2>&1 || true
+  done
+  die "apt-get $* не выполнился за 5 попыток. Проверьте интернет на сервере и запустите установку ещё раз."
+}
 reload()    { awg syncconf "$IFACE" <(awg-quick strip "$IFACE"); }
 
 usage() {
@@ -74,18 +86,20 @@ check_os() {
 install_packages() {
   export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1
   info "Устанавливаю пакеты (обычно 1–3 минуты)…"
-  "${APT[@]}" update </dev/null >/dev/null
-  "${APT[@]}" install software-properties-common gnupg curl iptables qrencode zip python3 iproute2 </dev/null >/dev/null
+  apt_retry update
+  apt_retry install software-properties-common gnupg curl iptables qrencode zip python3 iproute2
   if ! "${APT[@]}" install "linux-headers-$(uname -r)" </dev/null >/dev/null 2>&1; then
     warn "Пакет linux-headers-$(uname -r) не найден — модуль ядра может не собраться."
   fi
   if ! grep -rqs "amnezia/ppa" /etc/apt/sources.list /etc/apt/sources.list.d/; then
     info "Подключаю репозиторий Amnezia (ppa:amnezia/ppa)…"
-    add-apt-repository -y ppa:amnezia/ppa </dev/null >/dev/null
+    add-apt-repository -y ppa:amnezia/ppa </dev/null >/dev/null ||
+      add-apt-repository -y ppa:amnezia/ppa </dev/null >/dev/null ||
+      die "Не удалось подключить ppa:amnezia/ppa (Launchpad недоступен?). Запустите установку ещё раз."
   fi
-  "${APT[@]}" update </dev/null >/dev/null
+  apt_retry update
   info "Устанавливаю AmneziaWG (сборка модуля ядра занимает до минуты)…"
-  "${APT[@]}" install amneziawg </dev/null >/dev/null
+  apt_retry install amneziawg
 }
 
 load_module() {
